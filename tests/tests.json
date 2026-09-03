@@ -1,0 +1,37 @@
+[
+  {
+    "id": "T1",
+    "description": "Successful connection to PostgreSQL with pgvector",
+    "status": "pending",
+    "priority": "critical",
+    "category": "infrastructure"
+  },
+  {
+    "id": "T2",
+    "description": "FastAPI health check endpoint returns 200",
+    "status": "pending",
+    "priority": "high",
+    "category": "api"
+  },
+  {
+    "id": "T3",
+    "description": "Successful embedding insertion and vector search",
+    "status": "pending",
+    "priority": "critical",
+    "category": "rag"
+  },
+  {
+    "id": "T4",
+    "description": "LangGraph state transition: Router -> RAG",
+    "status": "pending",
+    "priority": "high",
+    "category": "orchestration"
+  },
+  {
+    "id": "T5",
+    "description": "NL to SQL translation for a simple SELECT query",
+    "status": "pending",
+    "priority": "critical",
+    "category": "sql"
+  }
+]

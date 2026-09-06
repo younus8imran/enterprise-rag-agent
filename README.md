@@ -24,7 +24,15 @@ A production-grade system for complex research, precise SQL queries over enterpr
 | **Testing** | Pytest |
 | **Evaluation** | RAGAS / LLM-as-a-Judge |
 
-## Setup and Run on Local
+## Project Structure
+
+```
+backend/          # FastAPI app + Alembic migrations + Docker
+frontend/         # React + Vite SPA
+uploads/          # User-uploaded documents
+```
+
+## Setup and Run
 
 ### 1. Clone and enter the project
 ```bash
@@ -32,10 +40,10 @@ git clone <repo-url>
 cd enterprise-intelligence-agent
 ```
 
-### 2. Create environment file
+### 2. Start infrastructure (PostgreSQL + pgvector)
 ```bash
-cp .env.example .env
-# Edit .env with your database URL, API keys, and secrets
+cd backend
+docker compose up -d
 ```
 
 ### 3. Install Python dependencies
@@ -43,9 +51,10 @@ cp .env.example .env
 uv pip install -r requirements.txt
 ```
 
-### 4. Start infrastructure (PostgreSQL + pgvector)
+### 4. Create environment file
 ```bash
-docker-compose up -d
+cp .env.example .env
+# Edit .env with your database URL, API keys, and secrets
 ```
 
 ### 5. Apply database migrations
@@ -60,58 +69,63 @@ python scripts/seed_database.py
 
 ### 7. Run the FastAPI server
 ```bash
-fastapi dev main.py
+fastapi dev app.main:app --reload
 ```
-The server starts at `http://localhost:8000` by default.
+The server starts at `http://localhost:8000`. API docs at `http://localhost:8000/docs`.
 
-### 8. Run tests
+### 8. Run the Frontend
 ```bash
+cd ../frontend
+npm install
+npx vite
+```
+Frontend at `http://localhost:5173`.
+
+### 9. Run tests
+```bash
+cd backend
 pytest
 ```
 
-### 9. Lint and type-check
+### 10. Lint and type-check
 ```bash
 flake8 .
 mypy .
 ```
 
-### 10. Evaluate the system
-```bash
-make evaluate
-```
-
-## Quick Start
+## Quick Start (Docker)
 
 ```bash
-# Install dependencies
-uv pip install -r requirements.txt
-
-# Start infrastructure (Postgres, etc.)
-docker-compose up -d
-
-# Run the app
-fastapi dev main.py
-
-# Run tests
-pytest
-
-# Lint
-flake8 .
-
-# Type check
-mypy .
-
-# Evaluate
-make evaluate
+cd backend
+docker compose up --build
 ```
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/chat` | POST | Chat with the agent |
-| `/api/v1/research` | POST | Run research agent |
-| `/api/v1/documents` | GET | List documents |
-| `/api/v1/documents/ingest` | POST | Ingest new documents |
-| `/api/v1/runs/{run_id}` | GET | Get run status |
-| `/api/v1/health` | GET | Health check |
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/api/v1/auth/register` | POST | — | Register new user |
+| `/api/v1/auth/login` | POST | — | Login, returns JWT |
+| `/api/v1/auth/me` | GET | Bearer | Get current user |
+| `/api/v1/chat` | POST | Bearer | Chat with the agent |
+| `/api/v1/chat/history` | GET | Bearer | Get chat history |
+| `/api/v1/research` | POST | Bearer | Run research agent |
+| `/api/v1/documents` | GET/POST | Bearer | List/ingest documents |
+| `/api/v1/sql` | POST | Bearer | Execute validated SQL |
+| `/api/v1/runs/{run_id}` | GET | Bearer | Get run status |
+| `/api/v1/health` | GET | — | Health check |
+
+## Authentication
+
+JWT-based authentication. All protected endpoints require:
+```
+Authorization: Bearer <access_token>
+```
+
+Token is obtained from `POST /auth/login`. Contains `user_id` (int), `username`, `role`, and `tenant_id`.
+
+## Development Notes
+
+- **JWT**: `sub` claim stored as string in token (JWT spec), decoded to `int` for database operations.
+- **Telemetry**: `user_id` and `tenant_id` typed as `int` throughout.
+- **Database**: All foreign keys (`user_id`, `tenant_id`) use `INTEGER` columns.

@@ -22,16 +22,13 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-.mypy_cache/
-.dmypy.json
-dmypy.json
 
 # Virtual Environment
 .venv/
 venv/
 ENV/
 env/
-.virtualenv/
+.virtualenv
 
 # IDEs
 .vscode/
@@ -45,6 +42,7 @@ env/
 .env
 .env.local
 .env.*.local
+.env.example
 
 # Database
 *.db
@@ -62,6 +60,9 @@ logs/
 htmlcov/
 .tox/
 .hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -80,20 +81,26 @@ alembic/versions/*.pyc
 .tmp/
 tmp/
 
+# Evaluation Results (keep structure, ignore timestamped runs)
+docs/evaluation-results/*.json
+
 # OS
 Thumbs.db
+.DS_Store
 
-# Node / React / Vite
-node_modules/
-dist/
-build/
-.vite/
+# Documentation builds
+docs/_build/
+site/
+
+# Application uploads / user content
+uploads/
+
+# Lock files (optional — pick uv.lock or requirements.txt)
+uv.lock
 
 # Docker build artifacts
 Dockerfile.local
 
 # Local testing DB snapshots
+*.sql
 backups/
-
-# Claude Code session outputs
-.claude-omniroute/

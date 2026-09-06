@@ -14,9 +14,13 @@ class RunManager:
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
 
-    async def create(self, run_id: str) -> Run:
+    async def create(self, run_id: str, user_id: int = None, tenant_id: int = None) -> Run:
         """Create a new run record with status 'running'."""
-        run = Run(id=run_id, status="running", progress=0.0, result=None, error=None)
+        run = Run(
+            id=run_id, status="running", progress=0.0,
+            result=None, error=None,
+            user_id=user_id, tenant_id=tenant_id,
+        )
         self.db.add(run)
         await self.db.commit()
         await self.db.refresh(run)

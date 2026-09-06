@@ -30,6 +30,8 @@ async def research_generator(
     run_id: str,
     question: str,
     tools: list[str] | None,
+    user_id: int | None = None,
+    tenant_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the full research pipeline and yields SSE chunks.
@@ -38,7 +40,7 @@ async def research_generator(
     """
     async with AsyncSessionLocal() as db:
         runs = RunManager(db)
-        await runs.create(run_id)
+        await runs.create(run_id, user_id=user_id, tenant_id=tenant_id)
         await runs.update(run_id, status="running", progress=0.1)
         yield await _sse_event("status", {"status": "running", "progress": 0.1, "run_id": run_id})
 
@@ -90,6 +92,38 @@ async def research_generator(
         yield await _sse_event("done", {})
 
 
+@router.get("/history", response_model=list)
+async def research_history(
+    auth: AuthContext = Depends(get_current_user),
+):
+    """Return completed research runs for current user (oldest first)."""
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy import select
+        from app.db.models import Run
+        stmt = (
+            select(Run)
+            .where(
+                Run.status.in_(["completed", "failed"]),
+                Run.user_id == auth.identity.user_id,
+                Run.tenant_id == auth.identity.tenant_id,
+            )
+            .order_by(Run.created_at.desc())
+            .limit(50)
+        )
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+        return [
+            {
+                "run_id": r.id,
+                "status": r.status,
+                "question": (r.result or {}).get("question") if isinstance(r.result, dict) else None,
+                "answer": (r.result or {}).get("answer") if isinstance(r.result, dict) else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+
+
 @router.post("", response_model=ResearchResponse, status_code=202)
 async def research(
     request: ResearchRequest,
@@ -117,7 +151,11 @@ async def research(
 
     if request.stream:
         return StreamingResponse(
-            research_generator(run_id, request.question, request.tools),
+            research_generator(
+                run_id, request.question, request.tools,
+                user_id=auth.identity.user_id,
+                tenant_id=auth.identity.tenant_id,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -128,7 +166,7 @@ async def research(
     # Non-streaming path
     async with AsyncSessionLocal() as db:
         runs = RunManager(db)
-        await runs.create(run_id)
+        await runs.create(run_id, user_id=auth.identity.user_id, tenant_id=auth.identity.tenant_id)
         await runs.update(run_id, status="running", progress=0.1)
 
         search_provider = get_search_provider()

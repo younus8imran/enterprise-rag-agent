@@ -166,7 +166,11 @@ async def chat(
         if request.stream:
             # Create run record so stream consumers can poll /runs/{id}
             async with AsyncSessionLocal() as db:
-                await RunManager(db).create(run_id)
+                await RunManager(db).create(
+                    run_id,
+                    user_id=auth.identity.user_id,
+                    tenant_id=auth.identity.tenant_id,
+                )
             return StreamingResponse(
                 stream_agent_events(run_id, request.query, auth),
                 media_type="text/event-stream"
@@ -228,7 +232,7 @@ async def chat(
         # Instantiate services (DB session, search, LLM)
         async with AsyncSessionLocal() as db:
             runs = RunManager(db)
-            await runs.create(run_id)
+            await runs.create(run_id, user_id=auth.identity.user_id, tenant_id=auth.identity.tenant_id)
             await runs.update(run_id, status="running", progress=0.1)
 
             # Persist user message immediately

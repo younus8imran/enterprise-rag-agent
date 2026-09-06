@@ -13,7 +13,7 @@ security = HTTPBearer()
 
 
 class TokenPayload(BaseModel):
-    sub: int  # user_id as int
+    sub: str  # JWT spec requires string subject
     username: str
     role: str
     tenant_id: int

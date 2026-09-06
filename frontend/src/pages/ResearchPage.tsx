@@ -17,6 +17,22 @@ export default function ResearchPage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+
+  // Load persisted research history (same pattern as ChatPage)
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const res = await (window as any).__apiFetch('/api/v1/research/history');
+        if (!res.ok) return;
+        const data = await res.json();
+        setHistory(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error('[Research] history load error', e);
+      }
+    }
+    loadHistory();
+  }, [token]);
 
   const toggleTool = (k: string) => {
     setSelected((prev) =>
@@ -368,6 +384,40 @@ export default function ResearchPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Research History */}
+      {history.length > 0 && (
+        <div style={{ marginTop: '2rem' }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#374151', margin: '0 0 0.75rem' }}>
+            Past Research ({history.length})
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {history.slice(0, 10).map((run) => (
+              <details
+                key={run.run_id}
+                style={{
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', color: '#374151', listStyle: 'none' }}>
+                  {run.question || 'Research run'} — {run.status}
+                  {run.created_at && (
+                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                      {new Date(run.created_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </summary>
+                <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#6b7280', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  {run.answer || 'No answer recorded.'}
+                </div>
+              </details>
+            ))}
+          </div>
         </div>
       )}
 

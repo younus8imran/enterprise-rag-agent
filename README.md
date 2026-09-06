@@ -124,6 +124,13 @@ Authorization: Bearer <access_token>
 
 Token is obtained from `POST /auth/login`. Contains `user_id` (int), `username`, `role`, and `tenant_id`.
 
+## Recent Changes (2026-09-06)
+
+- **Auth**: JWT `sub` claim is string per spec; decoded to `int` for DB; `JWT_SECRET` persistent.
+- **DB / Scope**: `user_id`/`tenant_id` on `Run`, `ChatMessage`, `Document`; research/doc history user-scoped.
+- **Removed tables**: `regions`, `departments`, `employees`, `products`, `customers`, `orders`, `order_items`, `expenses` (SQL agent kept).
+- **Migration chain**: fixed heads; applied `add_user_id_to_runs` + `drop_tables_2026` + `add_user_id_to_documents`.
+
 ## Development Notes
 
 - **JWT**: `sub` claim stored as string in token (JWT spec), decoded to `int` for database operations.

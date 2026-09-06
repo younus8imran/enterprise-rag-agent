@@ -3,8 +3,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 'drop_tables_2026'
-revision = 'drop_tables_2026'
-down_revision = 'c0a1b2c3d4e5'
+down_revision = 'add_user_id_to_runs'
 branch_labels = None
 depends_on = None
 

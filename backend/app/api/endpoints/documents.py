@@ -53,9 +53,11 @@ async def list_documents(
         access_level=user_access,
     )
 
-    # Tenant isolation (access_level filtering applies once Document model
-    # exposes that column; currently only tenant_id is stored)
-    base_filter = [Document.tenant_id == tenant_id]
+    # Tenant isolation + user scope
+    base_filter = [
+        Document.tenant_id == tenant_id,
+        Document.user_id == auth.identity.user_id,
+    ]
 
     # Total count
     count_stmt = select(func.count(Document.id)).where(*base_filter)
@@ -115,7 +117,7 @@ async def ingest_document(
     except json.JSONDecodeError:
         metadata = {}
 
-    # Verify user has write access to this tenant (compare as int to avoid type mismatch)
+    # Verify user owns / writes to this tenant
     if int(tenant_id) != int(auth.identity.tenant_id):
         raise HTTPException(
             status_code=403, detail="Cannot ingest documents for a different tenant"
@@ -146,6 +148,7 @@ async def ingest_document(
         result = await service.ingest(
             file_path=str(persistent_path),
             tenant_id=int(tenant_id),
+            user_id=auth.identity.user_id,
             access_level=access_level,
             metadata={**metadata, "original_filename": file.filename},
         )

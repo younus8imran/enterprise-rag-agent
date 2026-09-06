@@ -10,6 +10,7 @@ class Document(Base):
     __tablename__ = "documents"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     type = Column(String, nullable=False) # pdf, md, txt, csv
     source = Column(String)

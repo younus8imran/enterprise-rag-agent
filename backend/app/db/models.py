@@ -49,8 +49,8 @@ class ChatMessage(Base):
 class Run(Base):
     __tablename__ = "runs"
     id = Column(String, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     status = Column(String, nullable=False)
     progress = Column(Float, default=0.0)
     result = Column(JSON)

@@ -13,6 +13,8 @@ def upgrade():
     op.add_column('runs', sa.Column('tenant_id', sa.Integer(), sa.ForeignKey('tenants.id'), nullable=True))
     op.create_index('ix_runs_user_id', 'runs', ['user_id'])
     op.create_index('ix_runs_tenant_id', 'runs', ['tenant_id'])
+    # Backfill existing rows to current user (admin / seed) so NULLs are eliminated
+    # Then make non-nullable in a follow-up migration
 
 
 def downgrade():

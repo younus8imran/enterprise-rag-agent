@@ -51,6 +51,7 @@ class IngestionService:
         file_path: str,
         tenant_id: int,
         access_level: int = 1,
+        user_id: int = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> IngestionResult:
         """Run the full ingestion pipeline for a single document.
@@ -90,6 +91,7 @@ class IngestionService:
         # 2. Create the Document row ---------------------------------------------
         document = Document(
             tenant_id=tenant_id,
+            user_id=user_id,
             name=parsed.name,
             type=parsed.doc_type,
             source=str(path),

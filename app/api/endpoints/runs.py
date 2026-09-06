@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from app.api.schemas.requests import RunStatusResponse
 from app.core.security.auth import AuthContext, get_current_user
 from app.core.logging import logger
+from app.services.runs.manager import RunManager
+from app.db.session import AsyncSessionLocal
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -27,15 +29,21 @@ async def get_run_status(
     """
     logger.info("get_run_status", run_id=run_id, user_id=auth.identity.user_id)
 
-    # In production, query from a runs table or cache
-    # For now, mock a completed run
+    async with AsyncSessionLocal() as db:
+        run = await RunManager(db).get(run_id)
+
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Convert progress float to human-readable progress message
+    progress_msg = None
+    if run.status == "running":
+        progress_msg = f"Processing... {int(run.progress * 100)}%"
+
     return RunStatusResponse(
-        run_id=run_id,
-        status="completed",
-        progress="Task completed successfully",
-        result={
-            "answer": "Final answer based on research...",
-            "confidence": 0.85
-        },
-        error=None
+        run_id=run.id,
+        status=run.status,
+        progress=progress_msg,
+        result=run.result,
+        error=run.error
     )

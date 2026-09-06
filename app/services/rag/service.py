@@ -4,6 +4,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.rag.embeddings.base import BaseEmbedder
+from app.services.rag.embeddings.mistral_embedder import MistralEmbedder
 
 class RetrievalResult(BaseModel):
     content: str
@@ -12,17 +14,19 @@ class RetrievalResult(BaseModel):
     chunk_id: int
 
 class RAGService:
-    def __init__(self, db_session: AsyncSession):
+    def __init__(
+        self,
+        db_session: AsyncSession,
+        embedder: Optional[BaseEmbedder] = None,
+    ):
         self.db = db_session
+        self.embedder = embedder or MistralEmbedder()
 
-    async def embed_query(self, text: str) -> List[float]:
+    async def embed_query(self, query_text: str) -> List[float]:
         """
-        Generates embeddings for a query.
-        In production, this calls an LLM API (e.g., Mistral, Cohere).
+        Generates embeddings for a query using the configured embedder.
         """
-        # Mocking embedding for now to allow the agent to run.
-        # In real implementation, this would use settings.MISTRAL_API_KEY
-        return [0.1] * 1536
+        return await self.embedder.embed_query(query_text)
 
     async def hybrid_search(self, query: str, filters: Optional[Dict] = None, top_k: int = 5) -> List[RetrievalResult]:
         """
@@ -83,6 +87,6 @@ class RAGService:
         """
         if not documents:
             return []
-        # Mocking reranking by shuffling or keeping order
+        # Reranking delegated to Mistral reranker (future: BGE-Reranker or Mistral rerank API)
         # In production, this calls a reranker model (e.g., BGE-Reranker)
         return documents

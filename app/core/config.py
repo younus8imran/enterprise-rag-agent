@@ -1,13 +1,21 @@
-from pydantic import PostgresDsn, RedisDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
+from pydantic import PostgresDsn, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "Enterprise Intelligence Agent"
     APP_ENV: str = "development"
-    APP_DEBUG: bool = True
+    APP_DEBUG: bool = False
     API_V1_STR: str = "/api/v1"
+    ALLOWED_HOSTS: list[str] = ["*"]
+
+    # JWT
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
 
     # Database
     POSTGRES_USER: str
@@ -23,13 +31,16 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
 
-    # LLM
-    ANTHROPIC_API_KEY: Optional[str] = None
+    # LLM — Mistral
+    MISTRAL_API_KEY: Optional[str] = None
+
+    # Research
+    TAVILY_API_KEY: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
 
     @field_validator("DATABASE_URL")
@@ -38,5 +49,6 @@ class Settings(BaseSettings):
         if not v.startswith("postgresql+asyncpg://"):
             raise ValueError("DATABASE_URL must use postgresql+asyncpg:// driver")
         return v
+
 
 settings = Settings()

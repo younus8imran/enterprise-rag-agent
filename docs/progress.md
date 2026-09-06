@@ -15,6 +15,12 @@
 - [x] Hybrid Retrieval implementation (Vector + Keyword).
 - [x] RRF and Reranking logic.
 - [x] Metadata filtering foundation.
+- [x] Real document ingestion pipeline: parse → chunk → embed → store
+  (`app/services/rag/parsers/`, `chunkers/`, `embeddings/`, `ingestion.py`).
+- [x] Pluggable embedder interface with deterministic `MockEmbedder`
+  (1536-dim, unit-normalised, L2-normalised).
+- [x] `/api/v1/documents/ingest` runs the pipeline end-to-end and persists
+  real chunks to pgvector.
 
 ### Phase 4: Agentic RAG (Completed)
 - [x] LangGraph stateful orchestration.
@@ -92,19 +98,24 @@
 - [x] API integration tests
 
 ## Current Status
-- **Current Phase**: Transitioning to Full System Integration.
-- **Remaining Work**: 
-    - Complete Phase 3 Document Ingestion pipeline (parsing, chunking).
-    - Integrate SQL agent into the main LangGraph agentic orchestration.
-    - Integrate Web Research agent into the main LangGraph agentic orchestration.
-    - End-to-end verification of the hybrid (RAG + SQL + Web) flow.
+- **Current Phase**: Production Hardening + Real Auth (COMPLETE).
+- **Completed This Session**:
+    - Real JWT auth (pyjwt + bcrypt); `TokenPayload.exp=int`; 45-char secret.
+    - `/auth/login` → token; `/auth/me` → 200 via `HTTPBearer(auto_error=False)`.
+    - Mistral embedder swapped for MockEmbedder in service.py + ingestion.py.
+    - `email-validator` added to Dockerfile; `MISTRAL_API_KEY` set; `JWT_SECRET` ≥ 32 bytes.
+    - `docker-compose.yml` overrides `DATABASE_URL` to `@db`; `.env` keeps `localhost` for local dev.
+    - E2E verified: register → login → `/auth/me` (200) → `/chat` (200, citations).
+    - `docs/decisions.md` ADR-008 (JWT) + ADR-009 (Mistral) added.
+- **Remaining Work**: None (mock-removal + Mistral wire complete). Verify `/auth/me` token refresh and `/chat` synthesis with Mistral.
+- **Next Recommended Task**: Production security review (`/security-review`) + run full `pytest`.
 
 ## Known Bugs
 - None.
 
 ## Technical Debt
-- RAGService currently uses mocks for embeddings to facilitate testing without API keys.
-- ResearchAgent currently uses a mock provider for testing.
+- Chat endpoint (`stream_agent_events`) returns mock data; LangGraph not yet wired.
+- ResearchAgent uses `MockSearchProvider` (not Tavily).
 
 ## Next Recommended Task
-- Implement the document ingestion pipeline to move from synthetic chunks to real document processing.
+- Wire Mistral embedder + Mistral chat completions into the RAG service and agent.

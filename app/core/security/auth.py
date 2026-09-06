@@ -1,40 +1,104 @@
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
-from fastapi import HTTPException, Header, Depends
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import bcrypt
+import jwt
+from fastapi import Depends, Header, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+
+from app.core.config import settings
+
+security = HTTPBearer()
+
+
+class TokenPayload(BaseModel):
+    sub: str
+    username: str
+    role: str
+    tenant_id: str
+    exp: int  # JWT stores exp as Unix timestamp
+
 
 class UserIdentity(BaseModel):
     user_id: str
     username: str
-    role: str # "admin", "manager", "employee"
-    permissions: list[str] = Field(default_factory=list)
+    role: str
+    permissions: list[str] = []
     tenant_id: str
-    access_level: int = 1 # 1: Basic, 2: Confidential, 3: Top Secret
+    access_level: int = 1
+
 
 class AuthContext:
-    """Simple context for user identity and session"""
     def __init__(self, identity: UserIdentity):
         self.identity = identity
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> AuthContext:
-    """
-    Authentication middleware.
-    In production, this would validate a JWT token.
-    For now, it simulates identity based on a simple 'Bearer <role>' token.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authentication token")
 
-    token = authorization.split(" ")[1]
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-    # Mock user database
-    users = {
-        "admin": UserIdentity(user_id="u1", username="admin", role="admin", permissions=["*"], tenant_id="t1", access_level=3),
-        "manager": UserIdentity(user_id="u2", username="manager", role="manager", permissions=["read_internal"], tenant_id="t1", access_level=2),
-        "employee": UserIdentity(user_id="u3", username="employee", role="employee", permissions=["read_basic"], tenant_id="t1", access_level=1),
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
+
+
+def create_access_token(user_id: str, username: str, role: str, tenant_id: str) -> str:
+    """Create a signed JWT access token."""
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.JWT_EXPIRE_MINUTES
+    )
+    payload = {
+        "sub": user_id,
+        "username": username,
+        "role": role,
+        "tenant_id": tenant_id,
+        "exp": int(expire.timestamp()),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_token(token: str) -> TokenPayload:
+    """Decode and validate a JWT token. Raises HTTPException on failure."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        return TokenPayload(**payload)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> AuthContext:
+    """
+    Validate Bearer JWT token and return AuthContext.
+    Requires a valid JWT signed with JWT_SECRET.
+    """
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = credentials.credentials
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(token)
+
+    # Role -> permissions mapping
+    role_perms = {
+        "admin": ["*"],
+        "manager": ["read_internal", "write_internal"],
+        "employee": ["read_basic"],
     }
 
-    if token not in users:
-        raise HTTPException(status_code=403, detail="Invalid user role")
-
-    return AuthContext(identity=users[token])
+    identity = UserIdentity(
+        user_id=payload.sub,
+        username=payload.username,
+        role=payload.role,
+        tenant_id=payload.tenant_id,
+        permissions=role_perms.get(payload.role, []),
+        access_level={"admin": 3, "manager": 2, "employee": 1}.get(payload.role, 1),
+    )
+    return AuthContext(identity=identity)

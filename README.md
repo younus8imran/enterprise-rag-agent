@@ -40,7 +40,7 @@ cp .env.example .env
 
 ### 3. Install Python dependencies
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ### 4. Start infrastructure (PostgreSQL + pgvector)
@@ -84,7 +84,7 @@ make evaluate
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # Start infrastructure (Postgres, etc.)
 docker-compose up -d

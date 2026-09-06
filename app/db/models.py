@@ -5,6 +5,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -22,19 +23,23 @@ class Tenant(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     plan_level = Column(String, default="standard")
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    username = Column(String, unique=True, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     role = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
 class Region(Base):
     __tablename__ = "regions"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
+
 
 class Department(Base):
     __tablename__ = "departments"
@@ -43,6 +48,7 @@ class Department(Base):
     region_id = Column(Integer, ForeignKey("regions.id"), nullable=False)
 
     region = relationship("Region")
+
 
 class Employee(Base):
     __tablename__ = "employees"
@@ -57,6 +63,7 @@ class Employee(Base):
 
     department = relationship("Department")
 
+
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
@@ -67,6 +74,7 @@ class Product(Base):
     unit_price = Column(Numeric(12, 2), nullable=False)
     description = Column(Text)
 
+
 class Customer(Base):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True, index=True)
@@ -75,6 +83,7 @@ class Customer(Base):
     contact_email = Column(String, nullable=False)
     segment = Column(String, index=True)
     region_id = Column(Integer, ForeignKey("regions.id"), nullable=False)
+
 
 class Order(Base):
     __tablename__ = "orders"
@@ -87,6 +96,7 @@ class Order(Base):
 
     customer = relationship("Customer")
 
+
 class OrderItem(Base):
     __tablename__ = "order_items"
     id = Column(Integer, primary_key=True, index=True)
@@ -97,6 +107,7 @@ class OrderItem(Base):
 
     order = relationship("Order")
     product = relationship("Product")
+
 
 class Expense(Base):
     __tablename__ = "expenses"
@@ -109,3 +120,14 @@ class Expense(Base):
     description = Column(Text)
 
     department = relationship("Department")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+    id = Column(String, primary_key=True)
+    status = Column(String, nullable=False)  # 'running', 'completed', 'failed'
+    progress = Column(Float, default=0.0)  # 0.0 to 1.0
+    result = Column(JSON)
+    error = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True))

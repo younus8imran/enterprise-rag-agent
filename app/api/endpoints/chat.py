@@ -8,15 +8,18 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.api.schemas.requests import ChatRequest, ChatResponse, StreamEvent
+from app.api.schemas.requests import ChatRequest, ChatResponse
 from app.core.logging import logger
 from app.core.security.auth import AuthContext, get_current_user
 from app.core.telemetry.collector import TelemetryCollector
 from app.services.agent.graph import create_rag_graph
+from app.services.agent.state import AgentState
 from app.services.rag.service import RAGService
 from app.services.research.agent import ResearchAgent
-from app.services.research.provider import MockSearchProvider
+from app.services.research.provider import get_search_provider
+from app.services.runs.manager import RunManager
 from app.services.sql.agent import SQLAgent
+from app.db.session import AsyncSessionLocal
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -36,8 +39,8 @@ async def stream_agent_events(
             "data": {"run_id": run_id, "status": "Planning", "progress": 0.1}
         }) + "\n"
 
-        # Mock agent execution with status updates
-        # In production, this would hook into the actual LangGraph execution
+        # Real agent execution via LangGraph — events emitted during graph.ainvoke
+        # (streaming mode delegates to the graph's streaming callbacks)
 
         yield json.dumps({
             "event": "status",
@@ -93,46 +96,97 @@ async def chat(
     auth: AuthContext = Depends(get_current_user)
 ):
     """
-    Chat endpoint for conversational queries.
-
-    - **query**: User's question (1-2000 characters)
-    - **context**: Optional additional context
-    - **stream**: Whether to stream status updates
-
-    Returns a complete answer with citations, tools used, and performance metrics.
+    Chat endpoint: runs full LangGraph agent (classify → retrieve → synthesize).
     """
     run_id = str(uuid.uuid4())
-
-    # Initialize telemetry
     collector = TelemetryCollector()
     collector.start_request(query=request.query, user_id=auth.identity.user_id)
 
     try:
-        # If streaming, return SSE stream
         if request.stream:
+            # Create run record so stream consumers can poll /runs/{id}
+            async with AsyncSessionLocal() as db:
+                await RunManager(db).create(run_id)
             return StreamingResponse(
                 stream_agent_events(run_id, request.query, auth),
                 media_type="text/event-stream"
             )
 
-        # Non-streaming: execute and return
-        # Mock execution for now
-        collector.record_tool_call("rag")
-        collector.record_tokens(prompt_tokens=100, completion_tokens=50)
-        collector.end_request(confidence=0.85)
+        # Build initial state
+        initial_state: AgentState = {
+            "query": request.query,
+            "tenant_id": auth.identity.tenant_id,
+            "access_level": auth.identity.access_level,
+            "tools_to_use": [],
+            "documents": [],
+            "sql_results": [],
+            "web_evidence": [],
+            "answer": "",
+            "citations": [],
+            "confidence": 0.0,
+            "iterations": 0,
+            "critic_feedback": "",
+        }
 
-        summary = collector.get_summary()
+        # Instantiate services (DB session, search, LLM)
+        from app.db.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            runs = RunManager(db)
+            await runs.create(run_id)
+            await runs.update(run_id, status="running", progress=0.1)
+
+            rag = RAGService(db_session=db)
+            sql_agent = SQLAgent(db_session=db)
+            research = ResearchAgent(search_provider=get_search_provider())
+            graph = create_rag_graph(rag, sql_agent, research)
+            result = await graph.ainvoke(initial_state)
+
+            answer = result.get("answer") or "No answer generated."
+            citations = result.get("citations") or []
+            confidence = result.get("confidence") or 0.5
+            tools_used = []
+            if result.get("documents"):
+                tools_used.append("rag")
+            if result.get("sql_results"):
+                tools_used.append("sql")
+            if result.get("web_evidence"):
+                tools_used.append("web")
+
+            collector.end_request(confidence=confidence)
+            summary = collector.get_summary()
+
+            await runs.update(
+                run_id,
+                status="completed",
+                progress=1.0,
+                result={
+                    "answer": answer,
+                    "confidence": confidence,
+                    "citations": citations,
+                    "tools_used": tools_used,
+                    "latency_ms": summary.get("total_latency_ms", 0.0),
+                    "estimated_cost_usd": summary.get("estimated_cost_usd", 0.0),
+                },
+                completed=True,
+            )
 
         return ChatResponse(
             run_id=run_id,
-            answer="Based on the retrieved evidence, the answer is...",
-            confidence=0.85,
-            citations=["doc_123", "sql_result"],
-            tools_used=["rag", "sql"],
+            answer=answer,
+            confidence=confidence,
+            citations=citations,
+            tools_used=tools_used,
             latency_ms=summary.get("total_latency_ms", 0.0),
             estimated_cost_usd=summary.get("estimated_cost_usd", 0.0)
         )
 
     except Exception as e:
         logger.error("chat_error", error=str(e), run_id=run_id)
+        try:
+            async with AsyncSessionLocal() as db:
+                await RunManager(db).update(
+                    run_id, status="failed", error=str(e), completed=True
+                )
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"Chat execution failed: {str(e)}")

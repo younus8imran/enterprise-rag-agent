@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.services.research.provider import SearchProvider, SearchResponse
+from app.services.llm.mistral_chat import MistralChatProvider
 from app.services.research.evidence import (
     Evidence,
     EvidenceSource,
@@ -57,38 +58,15 @@ class ResearchAgent:
             List of research queries ordered by priority
         """
         logger.info("generating_research_queries", question=question)
-
-        # Mock query generation (in production, use LLM)
-        # Complex question detection
-        is_complex = any(
-            keyword in question.lower()
-            for keyword in ["compare", "difference", "vs", "versus", "both", "multiple"]
+        chat = MistralChatProvider()
+        system_msg = (
+            "Generate up to 3 precise web-search queries. Return only the queries, "
+            "one per line, with no numbering, no explanation, no markdown fences."
         )
-
-        if is_complex:
-            # Generate multiple focused queries
-            queries = [
-                ResearchQuery(
-                    query=question,
-                    intent="primary_question",
-                    priority=1
-                ),
-                ResearchQuery(
-                    query=f"{question.split()[0]} detailed explanation",
-                    intent="background_context",
-                    priority=2
-                ),
-            ]
-        else:
-            # Single refined query
-            queries = [
-                ResearchQuery(
-                    query=question,
-                    intent="direct_answer",
-                    priority=1
-                )
-            ]
-
+        # Pass user's question as query, system instruction guides format
+        response = await chat.generate_answer(query=question, system_prompt=system_msg) or question
+        queries_text = [q.strip() for q in response.split("\n") if q.strip()]
+        queries = [ResearchQuery(query=q, intent="direct_answer", priority=1) for q in queries_text[:3]]
         return queries[:self.max_queries]
 
     async def search(self, query: ResearchQuery) -> SearchResponse:

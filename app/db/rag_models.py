@@ -23,7 +23,7 @@ class Chunk(Base):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     content = Column(Text, nullable=False)
-    embedding = Column(Vector(1536), nullable=False) # Assuming OpenAI/Claude embeddings size
+    embedding = Column(Vector(1024), nullable=False)  # Mistral embed model = 1024 dims
 
     # Structured metadata for filtering
     page = Column(Integer)

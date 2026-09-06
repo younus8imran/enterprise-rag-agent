@@ -91,3 +91,16 @@ Thumbs.db
 # Documentation builds
 docs/_build/
 site/
+
+# Application uploads / user content
+uploads/
+
+# Lock files (optional — pick uv.lock or requirements.txt)
+uv.lock
+
+# Docker build artifacts
+Dockerfile.local
+
+# Local testing DB snapshots
+*.sql
+backups/

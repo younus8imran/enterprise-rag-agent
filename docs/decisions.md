@@ -53,3 +53,17 @@ This document tracks significant architectural decisions.
 - **Context**: Agentic conversations can be long-running and need to survive API pod restarts.
 - **Decision**: Use Redis as the checkpointer for LangGraph state.
 - **Consequences**: Adds a dependency on Redis, but ensures seamless conversation continuity and scalability.
+
+## ADR-008: JWT + bcrypt Auth (replacing mock Bearer)
+- **Status**: Accepted
+- **Date**: 2026-09-05
+- **Context**: Production needs real user identity; mock `Bearer admin` tokens are unsuitable for multi-tenant access control.
+- **Decision**: Use `pyjwt` for JWT creation/validation and `bcrypt` (via `passlib`) for password hashing. Tokens signed with `HS256` using `JWT_SECRET` env var (≥32 bytes). `TokenPayload.exp` stored as Unix `int` to match `jwt.decode` output. Swagger UI Authorize works with `Authorization: Bearer <token>`.
+- **Consequences**: bcrypt is slow by design (resistant to brute force); tokens expire in 60 min. Requires `email-validator` for `EmailStr`.
+
+## ADR-009: Mistral Embeddings (replacing MockEmbedder)
+- **Status**: Accepted
+- **Date**: 2026-09-05
+- **Context**: `MockEmbedder` generates deterministic pseudo-vectors — fine for tests, useless for real semantic search.
+- **Decision**: Swap to `MistralEmbedder` calling `https://api.mistral.ai/v1/embeddings` with `mistral-embed` model. Pluggable via `BaseEmbedder` interface; service/ingestion default to `MistralEmbedder`. `MockEmbedder` retained for unit tests.
+- **Consequences**: Requires `MISTRAL_API_KEY` env var; adds network dependency per embed call. `httpx` already in deps.

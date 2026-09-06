@@ -4,7 +4,8 @@ from app.services.agent.state import AgentState
 from app.services.rag.service import RAGService
 from app.services.sql.agent import SQLAgent
 from app.services.research.agent import ResearchAgent
-from app.services.research.provider import MockSearchProvider
+from app.services.research.provider import get_search_provider
+from app.services.llm.mistral_chat import MistralChatProvider
 from app.core.logging import logger
 from app.core.security.validation import SecurityValidator
 from app.core.telemetry.collector import TelemetryCollector
@@ -68,7 +69,7 @@ class AgentNodes:
         """Retrieve evidence from SQL database."""
         logger.info("node_retrieve_sql", query=state["query"])
         # Use the SQL agent to translate and execute
-        result = await self.sql.execute_query(state["query"])
+        result = await self.sql.query_with_retry(state["query"], int(state.get("tenant_id", 1)))
         return {"sql_results": [result]}
 
     async def retrieve_web(self, state: AgentState) -> Dict[str, Any]:
@@ -78,30 +79,37 @@ class AgentNodes:
         return {"web_evidence": result.evidence}
 
     async def synthesize_answer(self, state: AgentState) -> Dict[str, Any]:
-        """Combine evidence from all tools into a final cited synthesis."""
+        """Combine evidence from all tools into a final cited synthesis via Mistral."""
         logger.info("node_synthesize_answer")
 
         evidence_parts = []
         citations = []
 
         if state.get("documents"):
-            evidence_parts.append(f"Internal Docs: {state['documents'][0].content[:100]}...")
-            citations.extend([d.chunk_id for d in state["documents"]])
+            for d in state["documents"][:3]:
+                evidence_parts.append(f"[DOC] {d.content[:200]}")
+                citations.append(d.chunk_id)
 
         if state.get("sql_results"):
-            evidence_parts.append(f"SQL Data: {state['sql_results'][0]}")
+            evidence_parts.append(f"[SQL] {state['sql_results'][0]}")
             citations.append("SQL_DATA")
 
         if state.get("web_evidence"):
-            evidence_parts.append(f"Web Evidence: {state['web_evidence'][0].content[:100]}...")
-            citations.extend([e.citation.url for e in state["web_evidence"]])
+            for e in state["web_evidence"][:3]:
+                evidence_parts.append(f"[WEB] {e.content[:200]}")
+                citations.append(e.citation.url)
 
-        answer = "Synthesis of evidence: " + " | ".join(evidence_parts) if evidence_parts else "No evidence found."
+        if not evidence_parts:
+            return {"answer": "No evidence found.", "citations": [], "confidence": 0.0}
+
+        context = "\n".join(evidence_parts)
+        chat = MistralChatProvider()
+        answer = await chat.generate_answer(state["query"], context)
 
         return {
             "answer": answer,
             "citations": citations,
-            "confidence": 0.8 if evidence_parts else 0.0
+            "confidence": 0.85
         }
 
     async def criticize_answer(self, state: AgentState) -> Dict[str, Any]:

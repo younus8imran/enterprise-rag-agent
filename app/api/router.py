@@ -1,8 +1,9 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import health, chat, research, documents, runs
+from app.api.endpoints import auth, health, chat, research, documents, runs
 
 api_router = APIRouter()
+api_router.include_router(auth.router)
 api_router.include_router(health.router)
 api_router.include_router(chat.router)
 api_router.include_router(research.router)

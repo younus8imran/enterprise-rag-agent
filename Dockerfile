@@ -9,11 +9,19 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml poetry.lock* ./
-RUN pip install poetry && poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
+# Copy dependency files first
+COPY pyproject.toml uv.lock* README.md requirements.txt ./
+
+# Install dependencies (excluding dev dependencies for production)
+RUN uv pip install --system -r requirements.txt email-validator mistralai python-multipart
+
+# Copy the rest of the application
 COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

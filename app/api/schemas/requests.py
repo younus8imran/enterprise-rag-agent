@@ -41,8 +41,15 @@ class ResearchResponse(BaseModel):
 
 # ===== Document Ingestion =====
 class DocumentIngestRequest(BaseModel):
-    """Request schema for document ingestion"""
+    """Request schema for document ingestion (file_path-based, for internal use)."""
     file_path: str = Field(..., description="Path to document file")
+    tenant_id: str
+    access_level: int = Field(1, ge=1, le=3, description="1=Basic, 2=Confidential, 3=Top Secret")
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class DocumentIngestMetadata(BaseModel):
+    """Metadata fields that accompany a file upload during ingestion."""
     tenant_id: str
     access_level: int = Field(1, ge=1, le=3, description="1=Basic, 2=Confidential, 3=Top Secret")
     metadata: Optional[Dict[str, Any]] = None

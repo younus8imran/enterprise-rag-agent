@@ -16,19 +16,21 @@ async def seed_database():
         logger.info("starting_seed_process")
 
         # 1. Create Tenant
-        await conn.execute(text("INSERT INTO tenants (name, plan_level) VALUES ('Synthetic Corp', 'enterprise')"))
+        await conn.execute(
+            text("INSERT INTO tenants (name, plan_level) VALUES ('Synthetic Corp', 'enterprise') ON CONFLICT DO NOTHING")
+        )
         tenant_id = 1
 
         # 2. Create Regions
         regions = ["North America", "EMEA", "APAC", "LATAM"]
         for r in regions:
-            await conn.execute(text("INSERT INTO regions (name) VALUES (:name)"), {"name": r})
+            await conn.execute(text("INSERT INTO regions (name) VALUES (:name) ON CONFLICT DO NOTHING"), {"name": r})
 
         # 3. Create Departments
         depts = ["Sales", "Engineering", "Marketing", "Human Resources", "Finance", "Operations"]
         for d in depts:
             await conn.execute(
-                text("INSERT INTO departments (name, region_id) VALUES (:name, :rid)"),
+                text("INSERT INTO departments (name, region_id) VALUES (:name, :rid) ON CONFLICT DO NOTHING"),
                 {"name": d, "rid": random.randint(1, 4)}
             )
 
@@ -38,7 +40,7 @@ async def seed_database():
         for name in names:
             await conn.execute(
                 text("INSERT INTO employees (tenant_id, dept_id, full_name, email, role, salary) "
-                     "VALUES (:tid, :did, :name, :email, :role, :salary)"),
+                     "VALUES (:tid, :did, :name, :email, :role, :salary) ON CONFLICT DO NOTHING"),
                 {
                     "tid": tenant_id,
                     "did": random.randint(1, 6),
@@ -57,7 +59,7 @@ async def seed_database():
                 sku_counter += 1
                 await conn.execute(
                     text("INSERT INTO products (tenant_id, sku, name, category, unit_price, description) "
-                         "VALUES (:tid, :sku, :name, :cat, :price, :desc)"),
+                         "VALUES (:tid, :sku, :name, :cat, :price, :desc) ON CONFLICT DO NOTHING"),
                     {
                         "tid": tenant_id,
                         "sku": f"SYN-{sku_counter}",

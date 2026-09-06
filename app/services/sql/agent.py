@@ -1,14 +1,19 @@
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.sql.validator import SQLValidator, SQLValidationError
+
 from app.core.logging import logger
+from app.services.llm.mistral_chat import MistralChatProvider
+from app.services.sql.validator import SQLValidationError, SQLValidator
+
 
 class TableSchema(BaseModel):
     table_name: str
     columns: List[Dict[str, Any]]
     sample_values: Optional[Dict[str, Any]] = None
+
 
 class SQLResult(BaseModel):
     success: bool
@@ -16,6 +21,7 @@ class SQLResult(BaseModel):
     error: Optional[str] = None
     sql: str
     row_count: int = 0
+
 
 class SQLAgent:
     """
@@ -60,21 +66,20 @@ class SQLAgent:
             table_name = row.table_name
             if table_name not in tables:
                 tables[table_name] = []
-            tables[table_name].append({
-                "column_name": row.column_name,
-                "data_type": row.data_type,
-                "nullable": row.is_nullable == "YES"
-            })
+            tables[table_name].append(
+                {
+                    "column_name": row.column_name,
+                    "data_type": row.data_type,
+                    "nullable": row.is_nullable == "YES",
+                }
+            )
 
         return [
-            TableSchema(table_name=name, columns=cols)
-            for name, cols in tables.items()
+            TableSchema(table_name=name, columns=cols) for name, cols in tables.items()
         ]
 
     async def identify_relevant_tables(
-        self,
-        query: str,
-        schema: List[TableSchema]
+        self, query: str, schema: List[TableSchema]
     ) -> List[str]:
         """
         Identifies which tables are relevant to answer the query.
@@ -101,45 +106,26 @@ class SQLAgent:
         return list(set(relevant))
 
     async def generate_sql(
-        self,
-        query: str,
-        schema: List[TableSchema],
-        relevant_tables: List[str]
+        self, query: str, schema: List[TableSchema], relevant_tables: List[str]
     ) -> str:
-        """
-        Generates SQL based on the query and schema.
-        In production, this would use an LLM.
-        For now, we use template-based generation.
-        """
+        """Generates SQL using Mistral LLM given the query and schema."""
         logger.info("generating_sql", query=query, tables=relevant_tables)
 
-        # Mock SQL generation (in production, call LLM here)
-        # For demonstration, return a simple query
-        if "revenue" in query.lower() or "sales" in query.lower():
-            return """
-                SELECT
-                    SUM(total_amount) as total_revenue,
-                    COUNT(*) as order_count
-                FROM orders
-                WHERE status = 'Completed'
-            """
-        elif "employee" in query.lower():
-            return """
-                SELECT
-                    e.full_name,
-                    e.role,
-                    d.name as department
-                FROM employees e
-                JOIN departments d ON e.dept_id = d.id
-            """
-        else:
-            return "SELECT 1 as result"
+        schema_lines = "\n".join(
+            f"  {t.table_name}: " + ", ".join(c["column_name"] for c in t.columns)
+            for t in schema if t.table_name in relevant_tables
+        )
+        prompt = (
+            f"You are a SQL expert. Given the natural language question and database schema, "
+            f"output ONLY the SQL query (no explanation).\n\nSchema:\n{schema_lines}\n\n"
+            f"Question: {query}\n\nSQL:"
+        )
+        chat = MistralChatProvider()
+        sql = await chat.generate_answer(query, f"Schema:\n{schema_lines}\n\nQuestion: {query}")
+        # Strip markdown code fences if present
+        return sql.strip().strip("```sql").strip("```").strip()
 
-    async def execute_sql(
-        self,
-        sql: str,
-        tenant_id: int
-    ) -> SQLResult:
+    async def execute_sql(self, sql: str, tenant_id: int) -> SQLResult:
         """
         Executes SQL with validation and returns structured results.
         """
@@ -158,27 +144,16 @@ class SQLAgent:
             # Convert to dict
             data = [dict(row._mapping) for row in rows]
 
-            return SQLResult(
-                success=True,
-                data=data,
-                sql=sql,
-                row_count=len(data)
-            )
+            return SQLResult(success=True, data=data, sql=sql, row_count=len(data))
 
         except SQLValidationError as e:
             logger.error("sql_validation_failed", error=str(e))
             return SQLResult(
-                success=False,
-                error=f"Validation error: {str(e)}",
-                sql=sql
+                success=False, error=f"Validation error: {str(e)}", sql=sql
             )
         except Exception as e:
             logger.error("sql_execution_failed", error=str(e))
-            return SQLResult(
-                success=False,
-                error=f"Execution error: {str(e)}",
-                sql=sql
-            )
+            return SQLResult(success=False, error=f"Execution error: {str(e)}", sql=sql)
 
     async def analyze_error(self, error: str, sql: str) -> str:
         """
@@ -193,25 +168,26 @@ class SQLAgent:
             return "Unknown error. Manual review needed."
 
     async def correct_sql(
-        self,
-        original_sql: str,
-        error: str,
-        schema: List[TableSchema]
+        self, original_sql: str, error: str, schema: List[TableSchema]
     ) -> str:
-        """
-        Attempts to correct the SQL based on the error.
-        In production, this would use an LLM with the error context.
-        """
+        """Attempts to correct SQL using Mistral LLM given the error context."""
         logger.info("correcting_sql", error=error)
-        # Mock correction: just return the original for now
-        # In production, call LLM with error feedback
-        return original_sql
+        schema_lines = "\n".join(
+            f"  {t.table_name}: " + ", ".join(c["column_name"] for c in t.columns)
+            for t in schema
+        )
+        prompt = (
+            f"Correct the following SQL query based on the error.\n\n"
+            f"Schema:\n{schema_lines}\n\n"
+            f"Original SQL:\n{original_sql}\n\n"
+            f"Error:\n{error}\n\n"
+            f"Corrected SQL:"
+        )
+        chat = MistralChatProvider()
+        corrected = await chat.generate_answer("", prompt)
+        return corrected.strip().strip("```sql").strip("```").strip()
 
-    async def query_with_retry(
-        self,
-        nl_query: str,
-        tenant_id: int
-    ) -> SQLResult:
+    async def query_with_retry(self, nl_query: str, tenant_id: int) -> SQLResult:
         """
         Full pipeline: Generate → Validate → Execute → Retry on failure.
         """
